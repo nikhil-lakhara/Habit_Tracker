@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Royal Habit Tracker</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+/* LUXURY PALETTE */
+:root {
+    --gold: #d4af37;
+    --black: #0f0f0f;
+    --charcoal: #1c1c1c;
+    --glass: rgba(255, 255, 255, 0.03);
+    --border: rgba(212, 175, 55, 0.3);
+}
+
+body {
+    background: radial-gradient(circle at top, #1c1c1c, #0a0a0a);
+    color: #e0e0e0;
+    font-family: 'Optima', 'Segoe UI', serif;
+    padding: 30px;
+    margin: 0;
+}
+
+h1 {
+    text-align: center;
+    font-size: 38px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 30px;
+    font-weight: 300;
+}
+
+/* HEADER & STATS */
+.header {
+    display: flex;
+    justify-content: space-between;
+    padding: 25px;
+    border-radius: 4px;
+    background: var(--glass);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(15px);
+    margin-bottom: 20px;
+}
+
+.stats-container {
+    display: flex;
+    gap: 30px;
+    text-align: center;
+}
+
+.stat-box {
+    border-left: 1px solid var(--border);
+    padding-left: 20px;
+}
+
+.stat-value {
+    font-size: 22px;
+    color: var(--gold);
+    display: block;
+    font-weight: bold;
+}
+
+.stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    opacity: 0.7;
+}
+
+/* INPUTS */
+.input-section {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: white;
+    padding: 10px;
+    margin: 5px;
+    width: 220px;
+    outline: none;
+    transition: 0.3s;
+}
+
+input:focus { border-bottom: 1px solid var(--gold); }
+
+button {
+    padding: 10px 20px;
+    margin: 5px;
+    border-radius: 2px;
+    border: 1px solid var(--gold);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 11px;
+    transition: 0.4s;
+}
+
+#add-habit-btn { background: transparent; color: var(--gold); }
+#save-habits-btn { background: var(--gold); color: black; }
+
+button:hover { background: white; color: black; box-shadow: 0 0 15px var(--border); }
+
+/* TABLE */
+#table { overflow-x: auto; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--charcoal);
+}
+
+th {
+    background: black;
+    color: var(--gold);
+    padding: 15px;
+    font-size: 12px;
+    font-weight: 300;
+    border-bottom: 1px solid var(--border);
+}
+
+td { padding: 8px; border: 1px solid rgba(255,255,255,0.05); }
+
+/* BOXES */
+.box {
+    width: 18px;
+    height: 18px;
+    margin: auto;
+    border: 1px solid var(--border);
+    transition: 0.3s;
+}
+
+.completed { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.missed { background: #333; }
+.locked { opacity: 0.1; cursor: not-allowed; }
+
+canvas { margin-top: 40px; background: var(--glass); padding: 20px; border-radius: 4px; }
+</style>
+
+</head>
+
+<body>
+
+<h1>The Habit Ritual</h1>
+
+<div class="header">
+    <div>
+        <div id="time" style="color: var(--gold); font-size: 20px;"></div>
+        <div id="date" style="font-size: 12px; letter-spacing: 1px;"></div>
+    </div>
+    
+    <div class="stats-container">
+        <div class="stat-box" style="border: none;">
+            <span class="stat-value" id="stat-completed">0</span>
+            <span class="stat-label">Rituals Kept</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-value" id="stat-left">0</span>
+            <span class="stat-label">Pending</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-value" id="stat-percent">0%</span>
+            <span class="stat-label">Success Rate</span>
+        </div>
+    </div>
+</div>
+
+<div class="input-section">
+    <div id="habit-list">
+        <input type="text" class="habit-field" placeholder="Identify new habit...">
+    </div>
+    <button id="add-habit-btn">Add Ritual</button>
+    <button id="save-habits-btn">Save Progress</button>
+</div>
+
+<div id="table"></div>
+<canvas id="chart"></canvas>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+function saveData(data){ localStorage.setItem("habitTracker_Lux", JSON.stringify(data)); }
+function loadData(){ return JSON.parse(localStorage.getItem("habitTracker_Lux")); }
+
+/* UPDATED CLOCK & CALCULATION */
+function updateClock(){
+    const now = new Date();
+    document.getElementById("time").innerText = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    document.getElementById("date").innerText = now.toDateString();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+/* PERCENTAGE SYSTEM LOGIC */
+function updateProgressStats(habits, state) {
+    const today = new Date().getDate();
+    let totalPossible = habits.length * today;
+    let completedCount = 0;
+
+    // Count completions from state
+    Object.values(state).forEach(habitRow => {
+        Object.keys(habitRow).forEach(day => {
+            if(habitRow[day] === "completed" && parseInt(day) <= today) {
+                completedCount++;
+            }
+        });
+    });
+
+    let tasksLeft = totalPossible - completedCount;
+    let percentage = totalPossible > 0 ? Math.round((completedCount / totalPossible) * 100) : 0;
+
+    document.getElementById("stat-completed").innerText = completedCount;
+    document.getElementById("stat-left").innerText = tasksLeft < 0 ? 0 : tasksLeft;
+    document.getElementById("stat-percent").innerText = percentage + "%";
+}
+
+/* HABIT MANAGEMENT */
+const habitList = document.getElementById("habit-list");
+document.getElementById("add-habit-btn").onclick = () => {
+    const input = document.createElement("input");
+    input.className = "habit-field";
+    input.placeholder = "Identify new habit...";
+    habitList.appendChild(input);
+};
+
+let chart;
+
+document.getElementById("save-habits-btn").onclick = () => {
+    const inputs = document.querySelectorAll(".habit-field");
+    let habits = [];
+    inputs.forEach(i => { if(i.value) habits.push(i.value); });
+
+    let existing = loadData();
+    let state = existing ? existing.state : {};
+
+    saveData({habits, state});
+    generateTable(habits, state);
+};
+
+function generateTable(habits, state = {}){
+    const today = new Date().getDate();
+    const container = document.getElementById("table");
+    container.innerHTML = "";
+
+    let table = document.createElement("table");
+    let header = "<tr><th>Habit</th>";
+    for(let i=1; i<=31; i++) header += "<th>"+i+"</th>";
+    header += "</tr>";
+    table.innerHTML = header;
+
+    habits.forEach((h, row) => {
+        let tr = document.createElement("tr");
+        let rowHTML = `<td style="color:var(--gold); text-align:left; padding-left:15px">${h}</td>`;
+
+        for(let d=1; d<=31; d++){
+            let cls = "";
+            if(state[row] && state[row][d]) cls = state[row][d];
+            if(d > today) cls += " locked";
+            rowHTML += `<td><div class="box ${cls}" data-row="${row}" data-day="${d}"></div></td>`;
+        }
+        tr.innerHTML = rowHTML;
+        table.appendChild(tr);
+    });
+
+    container.appendChild(table);
+    updateProgressStats(habits, state);
+
+    document.querySelectorAll(".box").forEach(box => {
+        box.onclick = () => {
+            let day = box.dataset.day;
+            let row = box.dataset.row;
+            if(day > today) return;
+
+            if(!state[row]) state[row] = {};
+
+            if(box.classList.contains("completed")){
+                box.classList.remove("completed");
+                box.classList.add("missed");
+                state[row][day] = "missed";
+            } else if(box.classList.contains("missed")){
+                box.classList.remove("missed");
+                delete state[row][day];
+            } else {
+                box.classList.add("completed");
+                state[row][day] = "completed";
+            }
+
+            saveData({habits, state});
+            updateProgressStats(habits, state);
+            updateChart();
+        };
+    });
+    updateChart();
+}
+
+function updateChart(){
+    let data = new Array(31).fill(0);
+    document.querySelectorAll(".box.completed").forEach(b => {
+        let d = b.dataset.day;
+        data[d-1]++;
+    });
+
+    const ctx = document.getElementById("chart");
+    if(chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [...Array(31).keys()].map(i => i + 1),
+            datasets: [{
+                label: 'Ritual Progress',
+                data: data,
+                borderColor: '#d4af37',
+                backgroundColor: 'rgba(212, 175, 55, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { ticks: { color: '#888' }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+const saved = loadData();
+if(saved) generateTable(saved.habits, saved.state);
+
+});
+</script>
+
+</body>
+</html>
+```
